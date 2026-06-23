@@ -1,5 +1,7 @@
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 using VectorEditor.Classes;
 
 namespace VectorEditor
@@ -32,6 +34,10 @@ namespace VectorEditor
         // Для временного хранения при рисовании
         private Bitmap bitmapTmp;
 
+        // ========== ДОБАВЛЕННЫЕ ПОЛЯ ДЛЯ ЦВЕТА ==========
+        private Color currentColor = Color.Black; // Текущий цвет для рисования
+        private ColorDialog colorDialog = new ColorDialog(); // Диалог выбора цвета
+
         private void Form1_Load(object sender, EventArgs e)
         {
 
@@ -57,7 +63,69 @@ namespace VectorEditor
             this.Paint += FormMain_Paint;
             this.KeyDown += FormMain_KeyDown;
             this.Resize += FormMain_Resize;
+            this.MouseEnter += FormMain_MouseEnter;
+            this.MouseLeave += FormMain_MouseLeave;
+
+
+
+            AddColorButton();
+            UpdateCursor(); // Устанавливаем начальный курсор
         }
+
+        // ========== ДОБАВЛЕННЫЙ МЕТОД ДЛЯ КНОПКИ ЦВЕТА ==========
+        private void AddColorButton()
+        {
+            // Ищем существующую панель инструментов или создаем новую
+            ToolStrip toolStrip = null;
+            foreach (Control ctrl in this.Controls)
+            {
+                if (ctrl is ToolStrip ts)
+                {
+                    toolStrip = ts;
+                    break;
+                }
+            }
+
+            if (toolStrip == null)
+            {
+                toolStrip = new ToolStrip();
+                toolStrip.Dock = DockStyle.Top;
+                this.Controls.Add(toolStrip);
+            }
+
+            // Создаем кнопку выбора цвета
+            ToolStripButton btnColor = new ToolStripButton();
+            btnColor.Text = "Цвет"; // Просто текст, без фона
+            btnColor.DisplayStyle = ToolStripItemDisplayStyle.Text; // Только текст
+                                                                    // Убираем установку BackColor - не меняем фон кнопки
+            btnColor.Margin = new Padding(5, 0, 5, 0);
+            btnColor.Click += BtnColor_Click;
+            toolStrip.Items.Add(btnColor);
+
+            // Добавляем разделитель
+            toolStrip.Items.Add(new ToolStripSeparator());
+        }
+
+        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК КНОПКИ ЦВЕТА ==========
+        private void BtnColor_Click(object sender, EventArgs e)
+        {
+            colorDialog.Color = currentColor;
+            if (colorDialog.ShowDialog() == DialogResult.OK)
+            {
+                currentColor = colorDialog.Color;
+                Lib.defaultColor = currentColor;
+
+                // МЕНЯЕМ ТОЛЬКО ТЕКСТ, А НЕ ЦВЕТ КНОПКИ
+                if (sender is ToolStripButton btn)
+                {
+                    // Показываем название цвета в тексте кнопки
+                    btn.Text = $"Цвет: {currentColor.Name}";
+                    // Или можно просто оставить "Цвет" без изменений
+                    // btn.Text = "Цвет";
+                }
+            }
+        }
+
         private void FormMain_Resize(object sender, EventArgs e)
         {
             if (bitmap != null) bitmap.Dispose();
@@ -270,7 +338,7 @@ namespace VectorEditor
                     using (Graphics g = Graphics.FromImage(bitmap))
                     {
                         g.DrawImage(bitmapTmp, 0, 0);
-                        using (Pen pen = new Pen(Lib.defaultColor, Lib.defaultWidth))
+                        using (Pen pen = new Pen(currentColor, Lib.defaultWidth)) // ИСПОЛЬЗУЕМ currentColor
                         {
                             int x1 = II(tmpStart.x);
                             int y1 = JJ(tmpStart.y);
@@ -363,9 +431,9 @@ namespace VectorEditor
                     {
                         Obj obj;
                         if (flTools == tl_Rect)
-                            obj = new ObjRect(tmpStart.x, tmpStart.y, u, v, Lib.defaultColor, Lib.defaultWidth);
+                            obj = new ObjRect(tmpStart.x, tmpStart.y, u, v, currentColor, Lib.defaultWidth); // ИСПОЛЬЗУЕМ currentColor
                         else
-                            obj = new ObjEllipse(tmpStart.x, tmpStart.y, u, v, Lib.defaultColor, Lib.defaultWidth);
+                            obj = new ObjEllipse(tmpStart.x, tmpStart.y, u, v, currentColor, Lib.defaultWidth); // ИСПОЛЬЗУЕМ currentColor
                         page.Add(obj);
                         page.UnSelectAll();
                         obj.select = true;
@@ -416,6 +484,8 @@ namespace VectorEditor
                 page.UnSelectAll();
                 Draw();
             }
+            // ========== ДОБАВЛЕННАЯ СТРОКА ==========
+            UpdateCursor(); // Обновляем курсор при смене инструмента
         }
 
         public void SaveProject(string fileName) => page.Save(fileName);
@@ -445,6 +515,46 @@ namespace VectorEditor
             ofd.Filter = "Vector files (*.vec)|*.vec";
             if (ofd.ShowDialog() == DialogResult.OK)
                 LoadProject(ofd.FileName);
+        }
+        private void UpdateCursor()
+        {
+            switch (flTools)
+            {
+                case tl_Move:
+                    this.Cursor = Cursors.SizeAll; // Обычный курсор
+                    break;
+                case tl_Rect:
+
+                case tl_Ellipse:
+                    this.Cursor = Cursors.Cross; // Крестик для рисования
+                    break;
+                case tl_AddLineBz:
+                    this.Cursor = Cursors.Cross; // Перо для рисования линий
+                    break;
+                case tl_Rotate:
+                    this.Cursor = Cursors.SizeAll; // Для поворота
+                    break;
+                case tl_Text:
+                    this.Cursor = Cursors.IBeam; // Для текста
+                    break;
+                case tl_MovePoint:
+                    this.Cursor = Cursors.Hand; // Рука для перемещения точек
+                    break;
+                default:
+                    this.Cursor = Cursors.Default;
+                    break;
+            }
+        }
+        private void FormMain_MouseEnter(object sender, EventArgs e)
+        {
+            UpdateCursor();
+        }
+
+        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК ==========
+        private void FormMain_MouseLeave(object sender, EventArgs e)
+        {
+            // Когда мышь покидает форму, возвращаем стандартный курсор
+            this.Cursor = Cursors.Default;
         }
     }
 }
