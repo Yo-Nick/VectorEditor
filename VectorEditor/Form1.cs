@@ -53,6 +53,7 @@ namespace VectorEditor
 
             // Инициализация страницы (мировые координаты, например, от -5 до 15 по X, от -5 до 15 по Y)
             page = new Page(-5, -5, 15, 15);
+            SaveState();
             I1 = 0; J1 = 0; I2 = ClientSize.Width; J2 = ClientSize.Height;
 
             // Подписываемся на события мыши и клавиатуры
@@ -251,12 +252,14 @@ namespace VectorEditor
                     if (Lib.numObj >= 0 && page[Lib.numObj] is ObjBezier bez)
                     {
                         bez.AddPoint(u, v);
+                        SaveState();
                         Draw();
                     }
                     else
                     {
                         var newBez = new ObjBezier(Lib.defaultColor, Lib.defaultWidth);
                         newBez.AddPoint(u, v);
+                        SaveState();
                         page.Add(newBez);
                         page.UnSelectAll();
                         newBez.select = true;
@@ -275,6 +278,7 @@ namespace VectorEditor
                         {
                             var txtObj = new ObjText(u, v, text, Lib.defaultColor, Lib.defaultWidth, fd.Font);
                             page.Add(txtObj);
+                            SaveState();
                             Draw();
                         }
                     }
@@ -319,6 +323,7 @@ namespace VectorEditor
                         var obj = page[Lib.numObj];
                         if (Lib.numShape == -1)
                         {
+                            SaveState();
                             double dx = u - XX(e0.X);
                             double dy = v - YY(e0.Y);
                             obj.MoveObj(dx, dy);
@@ -398,6 +403,7 @@ namespace VectorEditor
                         double delta = angleNow - angleStart;
                         if (Math.Abs(delta) > 0.01)
                         {
+                            SaveState();
                             obj.RotateObj(cx, cy, delta);
                             e0 = e;
                             Draw();
@@ -408,6 +414,7 @@ namespace VectorEditor
                 case tl_MovePoint:
                     if (Lib.numObj >= 0 && page[Lib.numObj] is ObjBezier bezMv && Lib.numPoint >= 0)
                     {
+                        SaveState();
                         int idx = Lib.numPoint;
                         bezMv.points[idx] = new TXY(u, v);
                         bezMv.MakeShape();
@@ -435,6 +442,8 @@ namespace VectorEditor
                         else
                             obj = new ObjEllipse(tmpStart.x, tmpStart.y, u, v, currentColor, Lib.defaultWidth); // ИСПОЛЬЗУЕМ currentColor
                         page.Add(obj);
+                        SaveState();
+                        Console.Write("Тест для пул реквеста");
                         page.UnSelectAll();
                         obj.select = true;
                         Lib.numObj = page.Count - 1;
@@ -468,9 +477,17 @@ namespace VectorEditor
 
         private void FormMain_KeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Control && e.KeyCode == Keys.Z)
+            {
+                Undo();
+                e.Handled = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
             {
                 page.RemoveAt(Lib.numObj);
+                SaveState();
                 Lib.numObj = -1;
                 Draw();
             }
@@ -489,7 +506,13 @@ namespace VectorEditor
         }
 
         public void SaveProject(string fileName) => page.Save(fileName);
-        public void LoadProject(string fileName) { page.Load(fileName); Draw(); }
+        public void LoadProject(string fileName)
+        {
+            page.Load(fileName);
+            undoStack.Clear();
+            SaveState(); 
+            Draw();
+        }
 
         // Обработчики для кнопок (вызываются из дизайнера)
         private void ToolButtonClick(object sender, EventArgs e)
@@ -515,6 +538,51 @@ namespace VectorEditor
             ofd.Filter = "Vector files (*.vec)|*.vec";
             if (ofd.ShowDialog() == DialogResult.OK)
                 LoadProject(ofd.FileName);
+        }
+
+        private Stack<byte[]> undoStack = new Stack<byte[]>();
+        private const int MaxUndo = 30;
+        private bool isUndoing = false;
+
+        private void SaveState()
+        {
+            if (isUndoing) return;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                page.SaveToStream(ms);
+                byte[] state = ms.ToArray();
+                undoStack.Push(state);
+                if (undoStack.Count > MaxUndo)
+                {
+                    // Удаляем самые старые
+                    var temp = undoStack.Reverse().Take(MaxUndo).ToList();
+                    undoStack.Clear();
+                    foreach (var s in temp) undoStack.Push(s);
+                }
+            }
+        }
+
+        private void Undo()
+        {
+            if (undoStack.Count == 0) return;
+            isUndoing = true;
+            try
+            {
+                byte[] state = undoStack.Pop();
+                using (MemoryStream ms = new MemoryStream(state))
+                {
+                    page.LoadFromStream(ms);
+                }
+                page.UnSelectAll();
+                Lib.numObj = -1;
+                Lib.numPoint = -1;
+                drawing = false;
+                Draw();
+            }
+            finally
+            {
+                isUndoing = false;
+            }
         }
         private void UpdateCursor()
         {
