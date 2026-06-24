@@ -7,15 +7,20 @@ using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace VectorEditor.Classes
 {
-    // Класс страницы, хранит все объекты
+    // Класс страницы, хранит список всех векторных объектов,
+    //параметры окна (xMin, yMin, xMax, yMax) и обеспечивает
+    // сохранение/загрузку в бинарном формате (для файлов и для отмены действий).
     public class Page
     {
-        public double xMin, yMin, xMax, yMax;
+        // ---- Параметры видимого окна в мировых координатах ----
+        public double xMin, yMin, xMax, yMax; 
         public double pageWidth, pageHeight;
+
+        // ---- Список объектов ----
         private List<Obj> objects = new List<Obj>();
 
-        public int Count => objects.Count;
-        public Obj this[int index] => objects[index];
+        public int Count => objects.Count; //кол-во объектов на странцие
+        public Obj this[int index] => objects[index];//Индексатор для доступа к объектам по индексу
 
         public Page(double xMin, double yMin, double xMax, double yMax)
         {
@@ -27,11 +32,13 @@ namespace VectorEditor.Classes
             pageHeight = yMax - yMin;
         }
 
+        // ---- Управление списком объектов ----
         public void Add(Obj obj) => objects.Add(obj);
         public void Remove(Obj obj) => objects.Remove(obj);
         public void RemoveAt(int index) => objects.RemoveAt(index);
         public void Clear() => objects.Clear();
 
+        //Снять выделение со всех объектов и сбросить глобальные индексы
         public void UnSelectAll()
         {
             foreach (var o in objects) o.select = false;
@@ -40,6 +47,9 @@ namespace VectorEditor.Classes
             Lib.numPoint = -1;
         }
 
+
+        // Поиск объекта по координатам. Проверяет попадание в прямоугольник Shape.
+        // Идёт с конца списка (верхние объекты имеют  больший приоритет)
         public bool FindObj(double x, double y, out int index)
         {
             index = -1;
@@ -56,6 +66,7 @@ namespace VectorEditor.Classes
             return false;
         }
 
+        //Установка окна просмотра
         public void SetWindow(double xMin, double yMin, double xMax, double yMax)
         {
             this.xMin = xMin;
@@ -84,8 +95,11 @@ namespace VectorEditor.Classes
         {
             using (BinaryWriter bw = new BinaryWriter(stream, System.Text.Encoding.UTF8, true))
             {
+                // Параметры окна
                 bw.Write(xMin); bw.Write(yMin); bw.Write(xMax); bw.Write(yMax);
+                // Количество объектов
                 bw.Write(objects.Count);
+                // Сохраняем каждый объект
                 foreach (var obj in objects)
                 {
                     bw.Write(obj.typeObj);
@@ -99,6 +113,7 @@ namespace VectorEditor.Classes
                         bw.Write(p.y);
                         bw.Write(p.alf);
                     }
+                    // Для текста дополнительно сохраняем строку и шрифт
                     if (obj is ObjText txt)
                     {
                         bw.Write(txt.Text ?? "");

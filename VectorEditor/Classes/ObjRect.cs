@@ -49,7 +49,7 @@ namespace VectorEditor.Classes
         public override bool FindPoint(double x, double y, out int index)
         {
             index = -1;
-            double eps = 5.0;
+            double eps = 5.0;// порог в мировых координатах (примерно 5 пикселей)
             for (int i = 0; i < points.Length; i++)
             {
                 double dx = x - points[i].x;

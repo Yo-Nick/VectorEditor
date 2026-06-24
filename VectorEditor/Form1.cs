@@ -13,27 +13,27 @@ namespace VectorEditor
     public partial class Form1 : Form
     {
         #region Константы и первоначальные значения
-        // Константы инструментов
-        private const byte tl_Move = 0;
-        private const byte tl_AddLineBz = 1;
-        private const byte tl_Rotate = 4;
-        private const byte tl_MovePoint = 8;
-        private const byte tl_Text = 10;
-        private const byte tl_Rect = 17;
-        private const byte tl_Ellipse = 18;
+        // ID инструментов (теги кнопок)
+        private const byte tl_Move = 0;          // Перемещение объектов
+        private const byte tl_AddLineBz = 1;     // Рисование кривой Безье
+        private const byte tl_Rotate = 4;        // Поворот объектов
+        private const byte tl_MovePoint = 8;     // Перемещение опорных точек
+        private const byte tl_Text = 10;         // Вставка текста
+        private const byte tl_Rect = 17;         // Рисование прямоугольника
+        private const byte tl_Ellipse = 18;      // Рисование эллипса
 
         // Текущий инструмент
         private byte flTools = tl_Move;
 
         // Параметры окна на экране (в пикселях)
-        private int I1, J1, I2, J2;
-        private Bitmap bitmap;
-        private Graphics gScreen;
-        private Page page;
+        private int I1, J1, I2, J2;      // экранные координаты окна просмотра
+        private Bitmap bitmap;            // буфер для двойной буферизации
+        private Graphics gScreen;         // канва формы для вывода bitmap
+        private Page page;                // модель данных
 
         // Флаги рисования
-        private bool drawing = false;
-        private MouseEventArgs e0, e1;
+        private bool drawing = false;// флаг активного рисования/перемещения
+        private MouseEventArgs e0, e1;// запомненные позиции мыши
         private TXY tmpStart; // начальная точка в мировых координатах
 
         // Для временного хранения при рисовании
@@ -61,7 +61,10 @@ namespace VectorEditor
             // Инициализация страницы (мировые координаты, например, от -5 до 15 по X, от -5 до 15 по Y)
             page = new Page(-5, -5, 15, 15);
             SaveState();
-            I1 = 0; J1 = 0; I2 = ClientSize.Width; J2 = ClientSize.Height;
+            // Инициализация экранных координат
+            I1 = 0; J1 = 0;
+            I2 = ClientSize.Width;
+            J2 = ClientSize.Height;
 
             // Подписываемся на события мыши и клавиатуры
             this.MouseDown += FormMain_MouseDown;
@@ -74,10 +77,10 @@ namespace VectorEditor
             this.MouseEnter += FormMain_MouseEnter;
             this.MouseLeave += FormMain_MouseLeave;
 
-
-
+            // Добавляем кнопку выбора цвета на панель инструментов
             AddColorButton();
-            UpdateCursor(); // Устанавливаем начальный курсор
+            // Устанавливаем начальный курсор
+            UpdateCursor();
         }
 
         #region ДОБАВЛЕННЫЙ МЕТОД и ОБРАБОТЧИК ДЛЯ КНОПКИ ЦВЕТА 
@@ -135,12 +138,26 @@ namespace VectorEditor
         #endregion
 
 
-        //Свойства
+        #region Преобразование координат (из мировых в экранные и обратно)
+
+        //=== Прямое преобразование (мировые --> экранные) ===
+
+        //Преобразование мирового X в экранный I
         private int II(double x) => I1 + (int)((x - page.xMin) * (I2 - I1) / (page.xMax - page.xMin));
+        //Преобразование мирового Y в экранный J (с учётом переворота оси Y)
         private int JJ(double y) => J1 + (int)((page.yMax - y) * (J2 - J1) / (page.yMax - page.yMin));
+
+        //=== Обратное преобразование(экранные --> мировые) ===
+
+        //Преобразование экранного I в мировой X
         private double XX(int I) => page.xMin + (I - I1) * (page.xMax - page.xMin) / (I2 - I1);
+        //Преобразование экранного J в мировой Y
         private double YY(int J) => page.yMax - (J - J1) * (page.yMax - page.yMin) / (J2 - J1);
 
+        #endregion
+
+
+        //При изменении размера окна обновляем буфер и перерисовываем
         private void FormMain_Resize(object sender, EventArgs e)
         {
             if (bitmap != null) bitmap.Dispose();
@@ -149,29 +166,36 @@ namespace VectorEditor
             J2 = ClientSize.Height;
             Draw();
         }
+        //Основной метод отрисовки всего содержимого
         private void Draw()
         {
             using (Graphics g = Graphics.FromImage(bitmap))
             {
                 g.Clear(Color.White);
+                // Рисуем белую область страницы (границы видимого окна)
                 g.FillRectangle(Brushes.White, II(page.xMin), JJ(page.yMax),
                                  II(page.xMax) - II(page.xMin),
                                  JJ(page.yMin) - JJ(page.yMax));
+
+                // Отрисовка всех объектов
                 for (int i = 0; i < page.Count; i++)
                 {
                     var obj = page[i];
                     obj.DrawObj(g, II, JJ);
+
+                    // Если объект выделен, рисуем шейп и вспомогательные элементы
                     if (obj.select)
                     {
                         DrawShape(g, obj.Shape);
-                        if (obj is ObjBezier bez && Lib.numPoint >= 0)
-                            DrawBezierHelpers(g, bez);
+                        if (obj is ObjBezier bez && Lib.numPoint >= 0) ;
+
                     }
                 }
             }
-            gScreen.DrawImage(bitmap, ClientRectangle);
+            gScreen.DrawImage(bitmap, ClientRectangle);//выывод
         }
 
+        //Метод для  рисования прямоугольника выделения (шейпа)
         private void DrawShape(Graphics g, TXY[] shape)
         {
             if (shape == null || shape.Length < 4) return;
@@ -182,38 +206,13 @@ namespace VectorEditor
                 g.DrawLine(pen, II(shape[2].x), JJ(shape[2].y), II(shape[3].x), JJ(shape[3].y));
                 g.DrawLine(pen, II(shape[3].x), JJ(shape[3].y), II(shape[0].x), JJ(shape[0].y));
             }
-            Brush brush = Brushes.Green;
+            Brush brush = Brushes.Green; // Зелёные точки в углах
             foreach (var p in shape)
             {
                 int x = II(p.x) - 3;
                 int y = JJ(p.y) - 3;
                 g.FillRectangle(brush, x, y, 6, 6);
                 g.DrawRectangle(Pens.Black, x, y, 6, 6);
-            }
-        }
-
-        private void DrawBezierHelpers(Graphics g, ObjBezier bez)
-        {
-            int idx = Lib.numPoint;
-            if (idx < 0 || idx >= bez.points.Length) return;
-            using (Pen pen = new Pen(Color.Black, 1))
-            {
-                if (idx > 0)
-                {
-                    int x1 = II(bez.points[idx - 1].x);
-                    int y1 = JJ(bez.points[idx - 1].y);
-                    int x2 = II(bez.points[idx].x);
-                    int y2 = JJ(bez.points[idx].y);
-                    g.DrawLine(pen, x1, y1, x2, y2);
-                }
-                if (idx < bez.points.Length - 1)
-                {
-                    int x1 = II(bez.points[idx + 1].x);
-                    int y1 = JJ(bez.points[idx + 1].y);
-                    int x2 = II(bez.points[idx].x);
-                    int y2 = JJ(bez.points[idx].y);
-                    g.DrawLine(pen, x1, y1, x2, y2);
-                }
             }
         }
 
@@ -340,8 +339,7 @@ namespace VectorEditor
                         }
                         else
                         {
-                            // Упрощённо – не реализуем изменение размера через углы
-                            // Можно добавить логику по аналогии с книгой
+                            // TODO: реализовать изменение размера через углы
                         }
                         Draw();
                     }
@@ -487,6 +485,16 @@ namespace VectorEditor
         #endregion
 
         #region Выбор инструмента
+
+        // Обработчик нажатия на кнопки панели инструменто
+        private void ToolButtonClick(object sender, EventArgs e)
+        {
+            if (sender is ToolStripButton btn && btn.Tag != null)
+            {
+                byte tool = Convert.ToByte(btn.Tag);
+                SetTool(tool);
+            }
+        }
         public void SetTool(byte tool)
         {
             flTools = tool;
@@ -499,17 +507,55 @@ namespace VectorEditor
             UpdateCursor(); // Обновляем курсор при смене инструмента
         }
 
-        // Обработчики для кнопок (вызываются из дизайнера)
-        private void ToolButtonClick(object sender, EventArgs e)
+        #region Различные типы курсоров
+        private void UpdateCursor()
         {
-            if (sender is ToolStripButton btn && btn.Tag != null)
+            switch (flTools)
             {
-                byte tool = Convert.ToByte(btn.Tag);
-                SetTool(tool);
+                case tl_Move:
+                    this.Cursor = Cursors.SizeAll; // Обычный курсор
+                    break;
+                case tl_Rect:
+
+                case tl_Ellipse:
+                    this.Cursor = Cursors.Cross; // Крестик для рисования
+                    break;
+                case tl_AddLineBz:
+                    this.Cursor = Cursors.Cross; // Перо для рисования линий
+                    break;
+                case tl_Rotate:
+                    this.Cursor = Cursors.SizeAll; // Для поворота
+                    break;
+                case tl_Text:
+                    this.Cursor = Cursors.IBeam; // Для текста
+                    break;
+                case tl_MovePoint:
+                    this.Cursor = Cursors.Hand; // Рука для перемещения точек
+                    break;
+                default:
+                    this.Cursor = Cursors.Default;
+                    break;
             }
         }
+        private void FormMain_MouseEnter(object sender, EventArgs e)
+        {
+            UpdateCursor();
+        }
+
+
+        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК ==========
+        private void FormMain_MouseLeave(object sender, EventArgs e)
+        {
+            // Когда мышь покидает форму, возвращаем стандартный курсор
+            this.Cursor = Cursors.Default;
+        }
+        #endregion
+
 
         #endregion
+
+
+        #region Сохранение, загрузка и экспорт
 
         #region Сохранение и загрузка файла
         public void SaveProject(string fileName) => page.Save(fileName);
@@ -538,7 +584,7 @@ namespace VectorEditor
 
         #endregion
 
-        #region ЭКСПОРТ
+        #region Экспорт файла
         private void btnExport_Click(object sender, EventArgs e)
         {
             SaveFileDialog sfd = new SaveFileDialog();
@@ -793,6 +839,8 @@ namespace VectorEditor
 
         #endregion
 
+        #endregion
+
         #region Изменение темы приложения
         private void ApplyTheme(bool dark)
         {
@@ -800,7 +848,7 @@ namespace VectorEditor
             {
                 // Тёмная тема
                 this.BackColor = Color.FromArgb(45, 45, 48);
-                this.ForeColor = Color.White;                 
+                this.ForeColor = Color.White;
                 toolStrip1.BackColor = Color.FromArgb(45, 45, 48);
                 toolStrip1.ForeColor = Color.White;
 
@@ -832,11 +880,13 @@ namespace VectorEditor
 
         #region Возможность Ctrl + Z
 
+        //Стек для хранения состояний страницы (байтовы массивы)
         private Stack<byte[]> undoStack = new Stack<byte[]>();
-        private const int MaxUndo = 30;
-        private bool isUndoing = false;
+        private const int MaxUndo = 20; //Максимальное количество шагов назад
+        private bool isUndoing = false; //Флаг указывающий на вып-е отмены
+                                        //(чтобы не сохранять состояние повторно)
 
-         
+        //Метод сохранение текущего состояние страницы в стек
         private void SaveState()
         {
             if (isUndoing) return;
@@ -845,6 +895,7 @@ namespace VectorEditor
                 page.SaveToStream(ms);
                 byte[] state = ms.ToArray();
                 undoStack.Push(state);
+                // Ограничение размера стека
                 if (undoStack.Count > MaxUndo)
                 {
                     // Удаляем самые старые
@@ -855,6 +906,7 @@ namespace VectorEditor
             }
         }
 
+        //Отмена последнего действия – восстановление состояния из стека
         private void Undo()
         {
             if (undoStack.Count == 0) return;
@@ -878,9 +930,10 @@ namespace VectorEditor
             }
         }
 
-
+        #region Обработка клавиатуры
         private void FormMain_KeyDown(object sender, KeyEventArgs e)
         {
+            // Ctrl+Z – шаг назад
             if (e.Control && e.KeyCode == Keys.Z)
             {
                 Undo();
@@ -888,6 +941,7 @@ namespace VectorEditor
                 return;
             }
 
+            // Del – удаление выделенного объекта
             if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
             {
                 page.RemoveAt(Lib.numObj);
@@ -896,51 +950,9 @@ namespace VectorEditor
                 Draw();
             }
         }
+        #endregion
 
         #endregion
 
-        #region Различные типы курсоров
-        private void UpdateCursor()
-        {
-            switch (flTools)
-            {
-                case tl_Move:
-                    this.Cursor = Cursors.SizeAll; // Обычный курсор
-                    break;
-                case tl_Rect:
-
-                case tl_Ellipse:
-                    this.Cursor = Cursors.Cross; // Крестик для рисования
-                    break;
-                case tl_AddLineBz:
-                    this.Cursor = Cursors.Cross; // Перо для рисования линий
-                    break;
-                case tl_Rotate:
-                    this.Cursor = Cursors.SizeAll; // Для поворота
-                    break;
-                case tl_Text:
-                    this.Cursor = Cursors.IBeam; // Для текста
-                    break;
-                case tl_MovePoint:
-                    this.Cursor = Cursors.Hand; // Рука для перемещения точек
-                    break;
-                default:
-                    this.Cursor = Cursors.Default;
-                    break;
-            }
-        }
-        private void FormMain_MouseEnter(object sender, EventArgs e)
-        {
-            UpdateCursor();
-        }
-        
-
-        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК ==========
-        private void FormMain_MouseLeave(object sender, EventArgs e)
-        {
-            // Когда мышь покидает форму, возвращаем стандартный курсор
-            this.Cursor = Cursors.Default;
-        }
-        #endregion
     }
 }

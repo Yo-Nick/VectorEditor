@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace VectorEditor.Classes
 {
-    // Вспомогательная структура точки с углом поворота
+    //Хранит мировые координаты
     public struct TXY
     {
         public double x, y, alf;

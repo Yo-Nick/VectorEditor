@@ -19,8 +19,12 @@ namespace VectorEditor.Classes
         public TXY[] points;        // опорные точки
 
         // Абстрактные методы
+
+        //Отрисовка объекта на канве с преобразованием координат через делегаты II и JJ
         public abstract void DrawObj(Graphics g, Func<double, int> II, Func<double, int> JJ);
+        //прямоугольник выделения
         public abstract void MakeShape();
+        //Поиск опорной точки по координатам. Для перемещения объекта
         public abstract bool FindPoint(double x, double y, out int index);
 
         // Перемещение всех точек
