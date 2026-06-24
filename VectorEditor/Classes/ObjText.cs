@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 namespace VectorEditor.Classes
 {
     // Текстовый объект
+    //Хранит одну опорную точку(место вставки), строку и шрифт
     public class ObjText : Obj
     {
         public string Text { get; set; }

@@ -3,18 +3,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace VectorEditor.Classes
 {
-    // Класс страницы, хранит все объекты
+    // Класс страницы, хранит список всех векторных объектов,
+    //параметры окна (xMin, yMin, xMax, yMax) и обеспечивает
+    // сохранение/загрузку в бинарном формате (для файлов и для отмены действий).
     public class Page
     {
-        public double xMin, yMin, xMax, yMax;
+        // ---- Параметры видимого окна в мировых координатах ----
+        public double xMin, yMin, xMax, yMax; 
         public double pageWidth, pageHeight;
+
+        // ---- Список объектов ----
         private List<Obj> objects = new List<Obj>();
 
-        public int Count => objects.Count;
-        public Obj this[int index] => objects[index];
+        public int Count => objects.Count; //кол-во объектов на странцие
+        public Obj this[int index] => objects[index];//Индексатор для доступа к объектам по индексу
 
         public Page(double xMin, double yMin, double xMax, double yMax)
         {
@@ -26,26 +32,13 @@ namespace VectorEditor.Classes
             pageHeight = yMax - yMin;
         }
 
-        public void Add(Obj obj)
-        {
-            objects.Add(obj);
-        }
+        // ---- Управление списком объектов ----
+        public void Add(Obj obj) => objects.Add(obj);
+        public void Remove(Obj obj) => objects.Remove(obj);
+        public void RemoveAt(int index) => objects.RemoveAt(index);
+        public void Clear() => objects.Clear();
 
-        public void Remove(Obj obj)
-        {
-            objects.Remove(obj);
-        }
-
-        public void RemoveAt(int index)
-        {
-            objects.RemoveAt(index);
-        }
-
-        public void Clear()
-        {
-            objects.Clear();
-        }
-
+        //Снять выделение со всех объектов и сбросить глобальные индексы
         public void UnSelectAll()
         {
             foreach (var o in objects) o.select = false;
@@ -54,15 +47,15 @@ namespace VectorEditor.Classes
             Lib.numPoint = -1;
         }
 
-        // Поиск объекта по координатам (клик)
+
+        // Поиск объекта по координатам. Проверяет попадание в прямоугольник Shape.
+        // Идёт с конца списка (верхние объекты имеют  больший приоритет)
         public bool FindObj(double x, double y, out int index)
         {
             index = -1;
-            // Идём с конца (верхние объекты)
             for (int i = objects.Count - 1; i >= 0; i--)
             {
                 var obj = objects[i];
-                // Проверяем попадание в прямоугольник выделения
                 if (x >= obj.Shape[0].x && x <= obj.Shape[2].x &&
                     y >= obj.Shape[0].y && y <= obj.Shape[2].y)
                 {
@@ -73,7 +66,7 @@ namespace VectorEditor.Classes
             return false;
         }
 
-        // Изменение размера окна (масштабирование) – обновить xMin и т.д.
+        //Установка окна просмотра
         public void SetWindow(double xMin, double yMin, double xMax, double yMax)
         {
             this.xMin = xMin;
@@ -84,13 +77,29 @@ namespace VectorEditor.Classes
             pageHeight = yMax - yMin;
         }
 
-        // Сохранение в бинарный файл (упрощённо)
+        // ---- Сохранение/загрузка в файл ----
         public void Save(string fileName)
         {
-            using (BinaryWriter bw = new BinaryWriter(File.Open(fileName, FileMode.Create)))
+            using (FileStream fs = File.Open(fileName, FileMode.Create))
+                SaveToStream(fs);
+        }
+
+        public void Load(string fileName)
+        {
+            using (FileStream fs = File.Open(fileName, FileMode.Open))
+                LoadFromStream(fs);
+        }
+
+        // ---- Сохранение/загрузка в поток (для Undo) ----
+        public void SaveToStream(Stream stream)
+        {
+            using (BinaryWriter bw = new BinaryWriter(stream, System.Text.Encoding.UTF8, true))
             {
+                // Параметры окна
                 bw.Write(xMin); bw.Write(yMin); bw.Write(xMax); bw.Write(yMax);
+                // Количество объектов
                 bw.Write(objects.Count);
+                // Сохраняем каждый объект
                 foreach (var obj in objects)
                 {
                     bw.Write(obj.typeObj);
@@ -104,7 +113,7 @@ namespace VectorEditor.Classes
                         bw.Write(p.y);
                         bw.Write(p.alf);
                     }
-                    // Для текста сохраняем текст и шрифт
+                    // Для текста дополнительно сохраняем строку и шрифт
                     if (obj is ObjText txt)
                     {
                         bw.Write(txt.Text ?? "");
@@ -116,10 +125,9 @@ namespace VectorEditor.Classes
             }
         }
 
-        // Загрузка из бинарного файла
-        public void Load(string fileName)
+        public void LoadFromStream(Stream stream)
         {
-            using (BinaryReader br = new BinaryReader(File.Open(fileName, FileMode.Open)))
+            using (BinaryReader br = new BinaryReader(stream, System.Text.Encoding.UTF8, true))
             {
                 xMin = br.ReadDouble(); yMin = br.ReadDouble(); xMax = br.ReadDouble(); yMax = br.ReadDouble();
                 int count = br.ReadInt32();
@@ -142,20 +150,20 @@ namespace VectorEditor.Classes
                     Obj obj = null;
                     switch (type)
                     {
-                        case 4: // Rect
+                        case 4:
                             if (ptCount >= 2)
                                 obj = new ObjRect(pts[0].x, pts[0].y, pts[1].x, pts[1].y, color, width);
                             break;
-                        case 5: // Ellipse
+                        case 5:
                             if (ptCount >= 2)
                                 obj = new ObjEllipse(pts[0].x, pts[0].y, pts[1].x, pts[1].y, color, width);
                             break;
-                        case 6: // Bezier
+                        case 6:
                             obj = new ObjBezier(color, width);
                             foreach (var p in pts)
                                 (obj as ObjBezier).AddPoint(p.x, p.y);
                             break;
-                        case 10: // Text
+                        case 10:
                             string text = br.ReadString();
                             string fontName = br.ReadString();
                             float fontSize = br.ReadSingle();

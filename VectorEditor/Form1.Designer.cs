@@ -14,7 +14,11 @@
         private System.Windows.Forms.ToolStripSeparator sep1;
         private System.Windows.Forms.ToolStripButton btnSave;
         private System.Windows.Forms.ToolStripButton btnLoad;
+        private System.Windows.Forms.ToolStripButton btnExport;
 
+        private System.Windows.Forms.ToolStripSeparator sep2;
+        private System.Windows.Forms.ToolStripButton btnLightTheme;
+        private System.Windows.Forms.ToolStripButton btnDarkTheme;
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -37,12 +41,22 @@
             this.sep1 = new System.Windows.Forms.ToolStripSeparator();
             this.btnSave = new System.Windows.Forms.ToolStripButton();
             this.btnLoad = new System.Windows.Forms.ToolStripButton();
+            this.btnExport = new System.Windows.Forms.ToolStripButton();
+
+            this.sep2 = new System.Windows.Forms.ToolStripSeparator();
+            this.btnLightTheme = new System.Windows.Forms.ToolStripButton();
+            this.btnDarkTheme = new System.Windows.Forms.ToolStripButton();
+
 
             this.toolStrip1.SuspendLayout();
             this.SuspendLayout();
 
             // toolStrip1
             this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+                this.btnSave,
+                this.btnLoad,
+                this.btnExport,
+                this.sep1,
                 this.btnMove,
                 this.btnRect,
                 this.btnEllipse,
@@ -50,9 +64,11 @@
                 this.btnText,
                 this.btnRotate,
                 this.btnMovePoint,
-                this.sep1,
-                this.btnSave,
-                this.btnLoad
+
+                this.sep2,
+                this.btnLightTheme,
+                this.btnDarkTheme
+
             });
             this.toolStrip1.Location = new System.Drawing.Point(0, 0);
             this.toolStrip1.Name = "toolStrip1";
@@ -114,6 +130,24 @@
             this.btnLoad.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.btnLoad.Text = "Load";
             this.btnLoad.Click += new System.EventHandler(this.btnLoad_Click);
+
+            // btnExport
+            this.btnExport.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.btnExport.Text = "Export";
+            this.btnExport.Click += new System.EventHandler(this.btnExport_Click);
+
+            // sep1
+            this.sep2.Name = "sep2";
+
+            // btnLightTheme
+            this.btnLightTheme.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.btnLightTheme.Text = "Light theme";
+            this.btnLightTheme.Click += new System.EventHandler(this.btnLightTheme_Click);
+
+            // btnDarkTheme
+            this.btnDarkTheme.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.btnDarkTheme.Text = "Dark theme";
+            this.btnDarkTheme.Click += new System.EventHandler(this.btnDarkTheme_Click);
 
             // FormMain
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);

@@ -8,8 +8,12 @@ using System.Threading.Tasks;
 namespace VectorEditor.Classes
 {
     // Кривая Безье
+    // Хранит массив опорных точек (points). 
+    /// Для рисования через DrawBeziers требуется, чтобы количество точек было (3N + 1).
+    /// Во время рисования, пока точек мало, рисуется ломаная
     public class ObjBezier : Obj
     {
+        public bool IsClosed => closed; //Замкнута ли кривая
         private bool closed = false;
 
         public ObjBezier(Color color, byte width)
@@ -17,7 +21,7 @@ namespace VectorEditor.Classes
             pColor = color;
             pWidth = width;
             typeObj = 6;
-            points = new TXY[0];
+            points = new TXY[0]; // изначально пустой массив
         }
 
         public void AddPoint(double x, double y)
@@ -28,6 +32,7 @@ namespace VectorEditor.Classes
                 MakeShape();
         }
 
+        //Замыкание кривой: добавляет в конец первую точку, флаг closed = true
         public void CloseCurve()
         {
             if (points.Length >= 4 && !closed)
@@ -58,13 +63,16 @@ namespace VectorEditor.Classes
             Pc = new TXY((xMin + xMax) / 2, (yMin + yMax) / 2);
         }
 
+
+        //Отрисовка кривой Безье
+        // Рисует красные маркеры всех опорных точек
         public override void DrawObj(Graphics g, Func<double, int> II, Func<double, int> JJ)
         {
             if (points.Length == 0) return;
 
             using (Pen pen = GetPen())
             {
-                // Если только одна точка – рисуем её
+                // Если только одна точка – рисуем кружок
                 if (points.Length == 1)
                 {
                     int x = II(points[0].x);
@@ -72,7 +80,7 @@ namespace VectorEditor.Classes
                     g.DrawEllipse(pen, x - 3, y - 3, 6, 6);
                     return;
                 }
-
+                // Преобразуем все точки в экранные координаты
                 PointF[] pts = new PointF[points.Length];
                 for (int i = 0; i < points.Length; i++)
                 {
@@ -81,26 +89,29 @@ namespace VectorEditor.Classes
 
                 if (closed && points.Length >= 4)
                 {
+                    // Замкнутая кривая – рисуем через DrawClosedCurve (аппроксимация)
                     List<PointF> list = new List<PointF>(pts);
                     list.Add(pts[0]);
                     g.DrawClosedCurve(pen, list.ToArray(), 0.5f, FillMode.Alternate);
                 }
                 else
                 {
-                    // Если точек достаточно для Безье – рисуем Безье, иначе ломаную
+                    // Если количество точек соответствует (3N+1) и >= 4 – рисуем Безье
+                    
                     if ((points.Length - 1) % 3 == 0 && points.Length >= 4)
                     {
                         g.DrawBeziers(pen, pts);
                     }
                     else
                     {
-                        // Рисуем ломаную линию, чтобы видеть процесс
+                        //иначе рисуем ломанную 
                         g.DrawLines(pen, pts);
                     }
                 }
             }
 
-            // Рисуем опорные точки (для наглядности)
+            // Рисуем красные маркеры опорных точек
+            // просто для наглядности
             using (Brush brush = new SolidBrush(Color.Red))
             {
                 foreach (var p in points)

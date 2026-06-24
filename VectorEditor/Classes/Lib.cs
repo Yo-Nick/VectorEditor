@@ -12,7 +12,6 @@ namespace VectorEditor.Classes
         public static int numObj = -1;         // номер выделенного объекта
         public static int numShape = -1;       // номер угловой точки шейпа
         public static int numPoint = -1;       // номер выделенной точки кривой
-        public static int numPointNode = -1;   // для точек сопряжения
         public static Color defaultColor = Color.Black;
         public static byte defaultWidth = 2;
     }

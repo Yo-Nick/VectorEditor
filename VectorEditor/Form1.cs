@@ -1,42 +1,49 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
+using System.Text;
 using System.Windows.Forms;
+using System.Xml;
 using VectorEditor.Classes;
+using System.IO;
 
 namespace VectorEditor
 {
     public partial class Form1 : Form
     {
-        // Константы инструментов
-        private const byte tl_Move = 0;
-        private const byte tl_AddLineBz = 1;
-        private const byte tl_Rotate = 4;
-        private const byte tl_MovePoint = 8;
-        private const byte tl_Text = 10;
-        private const byte tl_Rect = 17;
-        private const byte tl_Ellipse = 18;
+        #region Константы и первоначальные значения
+        // ID инструментов (теги кнопок)
+        private const byte tl_Move = 0;          // Перемещение объектов
+        private const byte tl_AddLineBz = 1;     // Рисование кривой Безье
+        private const byte tl_Rotate = 4;        // Поворот объектов
+        private const byte tl_MovePoint = 8;     // Перемещение опорных точек
+        private const byte tl_Text = 10;         // Вставка текста
+        private const byte tl_Rect = 17;         // Рисование прямоугольника
+        private const byte tl_Ellipse = 18;      // Рисование эллипса
 
         // Текущий инструмент
         private byte flTools = tl_Move;
 
         // Параметры окна на экране (в пикселях)
-        private int I1, J1, I2, J2;
-        private Bitmap bitmap;
-        private Graphics gScreen;
-        private Page page;
+        private int I1, J1, I2, J2;      // экранные координаты окна просмотра
+        private Bitmap bitmap;            // буфер для двойной буферизации
+        private Graphics gScreen;         // канва формы для вывода bitmap
+        private Page page;                // модель данных
 
         // Флаги рисования
-        private bool drawing = false;
-        private MouseEventArgs e0, e1;
+        private bool drawing = false;// флаг активного рисования/перемещения
+        private MouseEventArgs e0, e1;// запомненные позиции мыши
         private TXY tmpStart; // начальная точка в мировых координатах
 
         // Для временного хранения при рисовании
         private Bitmap bitmapTmp;
 
-        // ========== ДОБАВЛЕННЫЕ ПОЛЯ ДЛЯ ЦВЕТА ==========
+        //Поля для цвета линий
         private Color currentColor = Color.Black; // Текущий цвет для рисования
         private ColorDialog colorDialog = new ColorDialog(); // Диалог выбора цвета
+
+        #endregion
 
         private void Form1_Load(object sender, EventArgs e)
         {
@@ -53,7 +60,11 @@ namespace VectorEditor
 
             // Инициализация страницы (мировые координаты, например, от -5 до 15 по X, от -5 до 15 по Y)
             page = new Page(-5, -5, 15, 15);
-            I1 = 0; J1 = 0; I2 = ClientSize.Width; J2 = ClientSize.Height;
+            SaveState();
+            // Инициализация экранных координат
+            I1 = 0; J1 = 0;
+            I2 = ClientSize.Width;
+            J2 = ClientSize.Height;
 
             // Подписываемся на события мыши и клавиатуры
             this.MouseDown += FormMain_MouseDown;
@@ -66,13 +77,13 @@ namespace VectorEditor
             this.MouseEnter += FormMain_MouseEnter;
             this.MouseLeave += FormMain_MouseLeave;
 
-
-
+            // Добавляем кнопку выбора цвета на панель инструментов
             AddColorButton();
-            UpdateCursor(); // Устанавливаем начальный курсор
+            // Устанавливаем начальный курсор
+            UpdateCursor();
         }
 
-        // ========== ДОБАВЛЕННЫЙ МЕТОД ДЛЯ КНОПКИ ЦВЕТА ==========
+        #region ДОБАВЛЕННЫЙ МЕТОД и ОБРАБОТЧИК ДЛЯ КНОПКИ ЦВЕТА 
         private void AddColorButton()
         {
             // Ищем существующую панель инструментов или создаем новую
@@ -106,7 +117,6 @@ namespace VectorEditor
             toolStrip.Items.Add(new ToolStripSeparator());
         }
 
-        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК КНОПКИ ЦВЕТА ==========
         private void BtnColor_Click(object sender, EventArgs e)
         {
             colorDialog.Color = currentColor;
@@ -125,7 +135,29 @@ namespace VectorEditor
                 }
             }
         }
+        #endregion
 
+
+        #region Преобразование координат (из мировых в экранные и обратно)
+
+        //=== Прямое преобразование (мировые --> экранные) ===
+
+        //Преобразование мирового X в экранный I
+        private int II(double x) => I1 + (int)((x - page.xMin) * (I2 - I1) / (page.xMax - page.xMin));
+        //Преобразование мирового Y в экранный J (с учётом переворота оси Y)
+        private int JJ(double y) => J1 + (int)((page.yMax - y) * (J2 - J1) / (page.yMax - page.yMin));
+
+        //=== Обратное преобразование(экранные --> мировые) ===
+
+        //Преобразование экранного I в мировой X
+        private double XX(int I) => page.xMin + (I - I1) * (page.xMax - page.xMin) / (I2 - I1);
+        //Преобразование экранного J в мировой Y
+        private double YY(int J) => page.yMax - (J - J1) * (page.yMax - page.yMin) / (J2 - J1);
+
+        #endregion
+
+
+        //При изменении размера окна обновляем буфер и перерисовываем
         private void FormMain_Resize(object sender, EventArgs e)
         {
             if (bitmap != null) bitmap.Dispose();
@@ -134,35 +166,36 @@ namespace VectorEditor
             J2 = ClientSize.Height;
             Draw();
         }
-
-        private int II(double x) => I1 + (int)((x - page.xMin) * (I2 - I1) / (page.xMax - page.xMin));
-        private int JJ(double y) => J1 + (int)((page.yMax - y) * (J2 - J1) / (page.yMax - page.yMin));
-        private double XX(int I) => page.xMin + (I - I1) * (page.xMax - page.xMin) / (I2 - I1);
-        private double YY(int J) => page.yMax - (J - J1) * (page.yMax - page.yMin) / (J2 - J1);
-
+        //Основной метод отрисовки всего содержимого
         private void Draw()
         {
             using (Graphics g = Graphics.FromImage(bitmap))
             {
                 g.Clear(Color.White);
+                // Рисуем белую область страницы (границы видимого окна)
                 g.FillRectangle(Brushes.White, II(page.xMin), JJ(page.yMax),
                                  II(page.xMax) - II(page.xMin),
                                  JJ(page.yMin) - JJ(page.yMax));
+
+                // Отрисовка всех объектов
                 for (int i = 0; i < page.Count; i++)
                 {
                     var obj = page[i];
                     obj.DrawObj(g, II, JJ);
+
+                    // Если объект выделен, рисуем шейп и вспомогательные элементы
                     if (obj.select)
                     {
                         DrawShape(g, obj.Shape);
-                        if (obj is ObjBezier bez && Lib.numPoint >= 0)
-                            DrawBezierHelpers(g, bez);
+                        if (obj is ObjBezier bez && Lib.numPoint >= 0) ;
+
                     }
                 }
             }
-            gScreen.DrawImage(bitmap, ClientRectangle);
+            gScreen.DrawImage(bitmap, ClientRectangle);//выывод
         }
 
+        //Метод для  рисования прямоугольника выделения (шейпа)
         private void DrawShape(Graphics g, TXY[] shape)
         {
             if (shape == null || shape.Length < 4) return;
@@ -173,7 +206,7 @@ namespace VectorEditor
                 g.DrawLine(pen, II(shape[2].x), JJ(shape[2].y), II(shape[3].x), JJ(shape[3].y));
                 g.DrawLine(pen, II(shape[3].x), JJ(shape[3].y), II(shape[0].x), JJ(shape[0].y));
             }
-            Brush brush = Brushes.Green;
+            Brush brush = Brushes.Green; // Зелёные точки в углах
             foreach (var p in shape)
             {
                 int x = II(p.x) - 3;
@@ -183,33 +216,9 @@ namespace VectorEditor
             }
         }
 
-        private void DrawBezierHelpers(Graphics g, ObjBezier bez)
-        {
-            int idx = Lib.numPoint;
-            if (idx < 0 || idx >= bez.points.Length) return;
-            using (Pen pen = new Pen(Color.Black, 1))
-            {
-                if (idx > 0)
-                {
-                    int x1 = II(bez.points[idx - 1].x);
-                    int y1 = JJ(bez.points[idx - 1].y);
-                    int x2 = II(bez.points[idx].x);
-                    int y2 = JJ(bez.points[idx].y);
-                    g.DrawLine(pen, x1, y1, x2, y2);
-                }
-                if (idx < bez.points.Length - 1)
-                {
-                    int x1 = II(bez.points[idx + 1].x);
-                    int y1 = JJ(bez.points[idx + 1].y);
-                    int x2 = II(bez.points[idx].x);
-                    int y2 = JJ(bez.points[idx].y);
-                    g.DrawLine(pen, x1, y1, x2, y2);
-                }
-            }
-        }
-
         private void FormMain_Paint(object sender, PaintEventArgs e) => Draw();
 
+        #region Функции мыши
         private void FormMain_MouseDown(object sender, MouseEventArgs e)
         {
             e0 = e;
@@ -251,12 +260,14 @@ namespace VectorEditor
                     if (Lib.numObj >= 0 && page[Lib.numObj] is ObjBezier bez)
                     {
                         bez.AddPoint(u, v);
+                        SaveState();
                         Draw();
                     }
                     else
                     {
                         var newBez = new ObjBezier(Lib.defaultColor, Lib.defaultWidth);
                         newBez.AddPoint(u, v);
+                        SaveState();
                         page.Add(newBez);
                         page.UnSelectAll();
                         newBez.select = true;
@@ -275,6 +286,7 @@ namespace VectorEditor
                         {
                             var txtObj = new ObjText(u, v, text, Lib.defaultColor, Lib.defaultWidth, fd.Font);
                             page.Add(txtObj);
+                            SaveState();
                             Draw();
                         }
                     }
@@ -319,6 +331,7 @@ namespace VectorEditor
                         var obj = page[Lib.numObj];
                         if (Lib.numShape == -1)
                         {
+                            SaveState();
                             double dx = u - XX(e0.X);
                             double dy = v - YY(e0.Y);
                             obj.MoveObj(dx, dy);
@@ -326,8 +339,7 @@ namespace VectorEditor
                         }
                         else
                         {
-                            // Упрощённо – не реализуем изменение размера через углы
-                            // Можно добавить логику по аналогии с книгой
+                            // TODO: реализовать изменение размера через углы
                         }
                         Draw();
                     }
@@ -398,6 +410,7 @@ namespace VectorEditor
                         double delta = angleNow - angleStart;
                         if (Math.Abs(delta) > 0.01)
                         {
+                            SaveState();
                             obj.RotateObj(cx, cy, delta);
                             e0 = e;
                             Draw();
@@ -408,6 +421,7 @@ namespace VectorEditor
                 case tl_MovePoint:
                     if (Lib.numObj >= 0 && page[Lib.numObj] is ObjBezier bezMv && Lib.numPoint >= 0)
                     {
+                        SaveState();
                         int idx = Lib.numPoint;
                         bezMv.points[idx] = new TXY(u, v);
                         bezMv.MakeShape();
@@ -435,6 +449,8 @@ namespace VectorEditor
                         else
                             obj = new ObjEllipse(tmpStart.x, tmpStart.y, u, v, currentColor, Lib.defaultWidth); // ИСПОЛЬЗУЕМ currentColor
                         page.Add(obj);
+                        SaveState();
+                        Console.Write("Тест для пул реквеста");
                         page.UnSelectAll();
                         obj.select = true;
                         Lib.numObj = page.Count - 1;
@@ -466,16 +482,19 @@ namespace VectorEditor
             Draw();
         }
 
-        private void FormMain_KeyDown(object sender, KeyEventArgs e)
+        #endregion
+
+        #region Выбор инструмента
+
+        // Обработчик нажатия на кнопки панели инструменто
+        private void ToolButtonClick(object sender, EventArgs e)
         {
-            if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
+            if (sender is ToolStripButton btn && btn.Tag != null)
             {
-                page.RemoveAt(Lib.numObj);
-                Lib.numObj = -1;
-                Draw();
+                byte tool = Convert.ToByte(btn.Tag);
+                SetTool(tool);
             }
         }
-
         public void SetTool(byte tool)
         {
             flTools = tool;
@@ -488,34 +507,7 @@ namespace VectorEditor
             UpdateCursor(); // Обновляем курсор при смене инструмента
         }
 
-        public void SaveProject(string fileName) => page.Save(fileName);
-        public void LoadProject(string fileName) { page.Load(fileName); Draw(); }
-
-        // Обработчики для кнопок (вызываются из дизайнера)
-        private void ToolButtonClick(object sender, EventArgs e)
-        {
-            if (sender is ToolStripButton btn && btn.Tag != null)
-            {
-                byte tool = Convert.ToByte(btn.Tag);
-                SetTool(tool);
-            }
-        }
-
-        private void btnSave_Click(object sender, EventArgs e)
-        {
-            SaveFileDialog sfd = new SaveFileDialog();
-            sfd.Filter = "Vector files (*.vec)|*.vec";
-            if (sfd.ShowDialog() == DialogResult.OK)
-                SaveProject(sfd.FileName);
-        }
-
-        private void btnLoad_Click(object sender, EventArgs e)
-        {
-            OpenFileDialog ofd = new OpenFileDialog();
-            ofd.Filter = "Vector files (*.vec)|*.vec";
-            if (ofd.ShowDialog() == DialogResult.OK)
-                LoadProject(ofd.FileName);
-        }
+        #region Различные типы курсоров
         private void UpdateCursor()
         {
             switch (flTools)
@@ -550,11 +542,417 @@ namespace VectorEditor
             UpdateCursor();
         }
 
+
         // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК ==========
         private void FormMain_MouseLeave(object sender, EventArgs e)
         {
             // Когда мышь покидает форму, возвращаем стандартный курсор
             this.Cursor = Cursors.Default;
         }
+        #endregion
+
+
+        #endregion
+
+
+        #region Сохранение, загрузка и экспорт
+
+        #region Сохранение и загрузка файла
+        public void SaveProject(string fileName) => page.Save(fileName);
+        public void LoadProject(string fileName)
+        {
+            page.Load(fileName);
+            undoStack.Clear();
+            SaveState();
+            Draw();
+        }
+
+        private void btnSave_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.Filter = "Vector files (*.vec)|*.vec";
+            if (sfd.ShowDialog() == DialogResult.OK)
+                SaveProject(sfd.FileName);
+        }
+        private void btnLoad_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog ofd = new OpenFileDialog();
+            ofd.Filter = "Vector files (*.vec)|*.vec";
+            if (ofd.ShowDialog() == DialogResult.OK)
+                LoadProject(ofd.FileName);
+        }
+
+        #endregion
+
+        #region Экспорт файла
+        private void btnExport_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.Filter = "JPEG Image|*.jpg|DXF |*.dxf";
+            sfd.Title = "Экспорт изображения";
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                string ext = Path.GetExtension(sfd.FileName).ToLower();
+                try
+                {
+                    switch (ext)
+                    {
+                        case ".jpg": ExportJPEG(sfd.FileName); break;
+                        case ".dxf": ExportDXF(sfd.FileName); break;
+                        default: MessageBox.Show("Unsupported format."); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Ошбика Экспорта: {ex.Message}");
+                }
+            }
+        }
+
+        #region Экспорт в .jpeg
+        private void ExportJPEG(string fileName)
+        {
+            bitmap.Save(fileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+        }
+        #endregion
+        #region Экспорт в .dxf
+        private void ExportDXF(string fileName)
+        {
+            using (StreamWriter sw = new StreamWriter(fileName))
+            {
+                // Заголовок
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("HEADER");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+
+                // Таблица слоёв
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("TABLES");
+                sw.WriteLine("0");
+                sw.WriteLine("TABLE");
+                sw.WriteLine("2");
+                sw.WriteLine("LAYER");
+                sw.WriteLine("70");
+                sw.WriteLine("1");
+                sw.WriteLine("0");
+                sw.WriteLine("LAYER");
+                sw.WriteLine("2");
+                sw.WriteLine("0");
+                sw.WriteLine("70");
+                sw.WriteLine("0");
+                sw.WriteLine("62");
+                sw.WriteLine("7"); // белый
+                sw.WriteLine("6");
+                sw.WriteLine("CONTINUOUS");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDTAB");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+
+                // Секция ENTITIES
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("ENTITIES");
+
+                // Обходим объекты
+                for (int i = 0; i < page.Count; i++)
+                {
+                    Obj obj = page[i];
+                    if (obj is ObjRect rect)
+                    {
+                        double x1 = rect.points[0].x;
+                        double y1 = rect.points[0].y;
+                        double x2 = rect.points[1].x;
+                        double y2 = rect.points[1].y;
+                        WriteLine(sw, x1, y1, x2, y1, obj);
+                        WriteLine(sw, x2, y1, x2, y2, obj);
+                        WriteLine(sw, x2, y2, x1, y2, obj);
+                        WriteLine(sw, x1, y2, x1, y1, obj);
+                    }
+                    else if (obj is ObjEllipse ell)
+                    {
+                        double cx = (ell.points[0].x + ell.points[1].x) / 2;
+                        double cy = (ell.points[0].y + ell.points[1].y) / 2;
+                        double rx = Math.Abs(ell.points[1].x - ell.points[0].x) / 2;
+                        double ry = Math.Abs(ell.points[1].y - ell.points[0].y) / 2;
+                        var pts = GetEllipsePoints(cx, cy, rx, ry, 30);
+                        WritePolyline(sw, pts, obj);
+                    }
+                    else if (obj is ObjBezier bez)
+                    {
+                        List<PointF> pts = new List<PointF>();
+                        var segments = GetBezierSegments(bez);
+                        foreach (var seg in segments)
+                        {
+                            // Аппроксимируем каждый сегмент 15 отрезками
+                            for (int t = 0; t <= 15; t++)
+                            {
+                                double u = t / 15.0;
+                                double x = (1 - u) * (1 - u) * (1 - u) * seg[0].X +
+                                           3 * (1 - u) * (1 - u) * u * seg[1].X +
+                                           3 * (1 - u) * u * u * seg[2].X +
+                                           u * u * u * seg[3].X;
+                                double y = (1 - u) * (1 - u) * (1 - u) * seg[0].Y +
+                                           3 * (1 - u) * (1 - u) * u * seg[1].Y +
+                                           3 * (1 - u) * u * u * seg[2].Y +
+                                           u * u * u * seg[3].Y;
+                                pts.Add(new PointF((float)x, (float)y));
+                            }
+                        }
+                        if (bez.IsClosed && pts.Count > 0)
+                            pts.Add(pts[0]);
+                        if (pts.Count > 1)
+                            WritePolyline(sw, pts, obj);
+                    }
+                    else if (obj is ObjText txt)
+                    {
+                        sw.WriteLine("0");
+                        sw.WriteLine("TEXT");
+                        sw.WriteLine("8");
+                        sw.WriteLine("0");
+                        sw.WriteLine("10");
+                        sw.WriteLine(txt.points[0].x.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("20");
+                        sw.WriteLine(txt.points[0].y.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("30");
+                        sw.WriteLine("0");
+                        sw.WriteLine("40");
+                        sw.WriteLine(txt.Font.Size.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("1");
+                        sw.WriteLine(txt.Text);
+                        sw.WriteLine("50");
+                        sw.WriteLine("0");
+                        sw.WriteLine("62");
+                        sw.WriteLine(ColorToDXF(txt.pColor));
+                    }
+                }
+
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+                sw.WriteLine("0");
+                sw.WriteLine("EOF");
+            }
+        }
+
+        // Вспомогательные методы для DXF
+        private void WriteLine(StreamWriter sw, double x1, double y1, double x2, double y2, Obj obj)
+        {
+            sw.WriteLine("0");
+            sw.WriteLine("LINE");
+            sw.WriteLine("8");
+            sw.WriteLine("0");
+            sw.WriteLine("10");
+            sw.WriteLine(x1.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("20");
+            sw.WriteLine(y1.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("30");
+            sw.WriteLine("0");
+            sw.WriteLine("11");
+            sw.WriteLine(x2.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("21");
+            sw.WriteLine(y2.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("31");
+            sw.WriteLine("0");
+            sw.WriteLine("62");
+            sw.WriteLine(ColorToDXF(obj.pColor));
+        }
+
+        private void WritePolyline(StreamWriter sw, List<PointF> pts, Obj obj)
+        {
+            if (pts.Count < 2) return;
+            sw.WriteLine("0");
+            sw.WriteLine("POLYLINE");
+            sw.WriteLine("8");
+            sw.WriteLine("0");
+            sw.WriteLine("66");
+            sw.WriteLine("1");
+            sw.WriteLine("62");
+            sw.WriteLine(ColorToDXF(obj.pColor));
+            foreach (var p in pts)
+            {
+                sw.WriteLine("0");
+                sw.WriteLine("VERTEX");
+                sw.WriteLine("8");
+                sw.WriteLine("0");
+                sw.WriteLine("10");
+                sw.WriteLine(p.X.ToString(CultureInfo.InvariantCulture));
+                sw.WriteLine("20");
+                sw.WriteLine(p.Y.ToString(CultureInfo.InvariantCulture));
+                sw.WriteLine("30");
+                sw.WriteLine("0");
+            }
+            sw.WriteLine("0");
+            sw.WriteLine("SEQEND");
+        }
+
+        private List<PointF> GetEllipsePoints(double cx, double cy, double rx, double ry, int segments)
+        {
+            List<PointF> pts = new List<PointF>();
+            for (int i = 0; i <= segments; i++)
+            {
+                double angle = 2 * Math.PI * i / segments;
+                double x = cx + rx * Math.Cos(angle);
+                double y = cy + ry * Math.Sin(angle);
+                pts.Add(new PointF((float)x, (float)y));
+            }
+            return pts;
+        }
+
+        private List<PointF[]> GetBezierSegments(ObjBezier bez)
+        {
+            List<PointF[]> segs = new List<PointF[]>();
+            if (bez.points.Length < 4) return segs;
+            int i = 1;
+            while (i + 2 < bez.points.Length)
+            {
+                PointF[] seg = new PointF[4];
+                seg[0] = new PointF((float)bez.points[i - 1].x, (float)bez.points[i - 1].y);
+                seg[1] = new PointF((float)bez.points[i].x, (float)bez.points[i].y);
+                seg[2] = new PointF((float)bez.points[i + 1].x, (float)bez.points[i + 1].y);
+                seg[3] = new PointF((float)bez.points[i + 2].x, (float)bez.points[i + 2].y);
+                segs.Add(seg);
+                i += 3;
+            }
+            return segs;
+        }
+
+        private int ColorToDXF(Color c)
+        {
+            if (c == Color.Black) return 0;
+            if (c == Color.Red) return 1;
+            if (c == Color.Yellow) return 2;
+            if (c == Color.Green) return 3;
+            if (c == Color.Cyan) return 4;
+            if (c == Color.Blue) return 5;
+            if (c == Color.Magenta) return 6;
+            if (c == Color.White) return 7;
+            return 7; // по умолчанию белый
+        }
+
+        #endregion
+
+        #endregion
+
+        #endregion
+
+        #region Изменение темы приложения
+        private void ApplyTheme(bool dark)
+        {
+            if (dark)
+            {
+                // Тёмная тема
+                this.BackColor = Color.FromArgb(45, 45, 48);
+                this.ForeColor = Color.White;
+                toolStrip1.BackColor = Color.FromArgb(45, 45, 48);
+                toolStrip1.ForeColor = Color.White;
+
+            }
+            else
+            {
+                // Светлая тема (по умолч)
+                this.BackColor = SystemColors.Control;
+                this.ForeColor = SystemColors.ControlText;
+                toolStrip1.BackColor = SystemColors.Control;
+                toolStrip1.ForeColor = SystemColors.ControlText;
+            }
+
+            // Принудительно перерисовываем форму
+            this.Invalidate();
+        }
+
+        private void btnLightTheme_Click(object sender, EventArgs e)
+        {
+            ApplyTheme(false);
+        }
+
+        private void btnDarkTheme_Click(object sender, EventArgs e)
+        {
+            ApplyTheme(true);
+        }
+
+        #endregion
+
+        #region Возможность Ctrl + Z
+
+        //Стек для хранения состояний страницы (байтовы массивы)
+        private Stack<byte[]> undoStack = new Stack<byte[]>();
+        private const int MaxUndo = 20; //Максимальное количество шагов назад
+        private bool isUndoing = false; //Флаг указывающий на вып-е отмены
+                                        //(чтобы не сохранять состояние повторно)
+
+        //Метод сохранение текущего состояние страницы в стек
+        private void SaveState()
+        {
+            if (isUndoing) return;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                page.SaveToStream(ms);
+                byte[] state = ms.ToArray();
+                undoStack.Push(state);
+                // Ограничение размера стека
+                if (undoStack.Count > MaxUndo)
+                {
+                    // Удаляем самые старые
+                    var temp = undoStack.Reverse().Take(MaxUndo).ToList();
+                    undoStack.Clear();
+                    foreach (var s in temp) undoStack.Push(s);
+                }
+            }
+        }
+
+        //Отмена последнего действия – восстановление состояния из стека
+        private void Undo()
+        {
+            if (undoStack.Count == 0) return;
+            isUndoing = true;
+            try
+            {
+                byte[] state = undoStack.Pop();
+                using (MemoryStream ms = new MemoryStream(state))
+                {
+                    page.LoadFromStream(ms);
+                }
+                page.UnSelectAll();
+                Lib.numObj = -1;
+                Lib.numPoint = -1;
+                drawing = false;
+                Draw();
+            }
+            finally
+            {
+                isUndoing = false;
+            }
+        }
+
+        #region Обработка клавиатуры
+        private void FormMain_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Ctrl+Z – шаг назад
+            if (e.Control && e.KeyCode == Keys.Z)
+            {
+                Undo();
+                e.Handled = true;
+                return;
+            }
+
+            // Del – удаление выделенного объекта
+            if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
+            {
+                page.RemoveAt(Lib.numObj);
+                SaveState();
+                Lib.numObj = -1;
+                Draw();
+            }
+        }
+        #endregion
+
+        #endregion
+
     }
 }
