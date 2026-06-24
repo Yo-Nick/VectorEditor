@@ -1,13 +1,18 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
+using System.Text;
 using System.Windows.Forms;
+using System.Xml;
 using VectorEditor.Classes;
+using System.IO;
 
 namespace VectorEditor
 {
     public partial class Form1 : Form
     {
+        #region Константы и первоначальные значения
         // Константы инструментов
         private const byte tl_Move = 0;
         private const byte tl_AddLineBz = 1;
@@ -34,9 +39,11 @@ namespace VectorEditor
         // Для временного хранения при рисовании
         private Bitmap bitmapTmp;
 
-        // ========== ДОБАВЛЕННЫЕ ПОЛЯ ДЛЯ ЦВЕТА ==========
+        //Поля для цвета линий
         private Color currentColor = Color.Black; // Текущий цвет для рисования
         private ColorDialog colorDialog = new ColorDialog(); // Диалог выбора цвета
+
+        #endregion
 
         private void Form1_Load(object sender, EventArgs e)
         {
@@ -73,7 +80,7 @@ namespace VectorEditor
             UpdateCursor(); // Устанавливаем начальный курсор
         }
 
-        // ========== ДОБАВЛЕННЫЙ МЕТОД ДЛЯ КНОПКИ ЦВЕТА ==========
+        #region ДОБАВЛЕННЫЙ МЕТОД и ОБРАБОТЧИК ДЛЯ КНОПКИ ЦВЕТА 
         private void AddColorButton()
         {
             // Ищем существующую панель инструментов или создаем новую
@@ -107,7 +114,6 @@ namespace VectorEditor
             toolStrip.Items.Add(new ToolStripSeparator());
         }
 
-        // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК КНОПКИ ЦВЕТА ==========
         private void BtnColor_Click(object sender, EventArgs e)
         {
             colorDialog.Color = currentColor;
@@ -126,6 +132,14 @@ namespace VectorEditor
                 }
             }
         }
+        #endregion
+
+
+        //Свойства
+        private int II(double x) => I1 + (int)((x - page.xMin) * (I2 - I1) / (page.xMax - page.xMin));
+        private int JJ(double y) => J1 + (int)((page.yMax - y) * (J2 - J1) / (page.yMax - page.yMin));
+        private double XX(int I) => page.xMin + (I - I1) * (page.xMax - page.xMin) / (I2 - I1);
+        private double YY(int J) => page.yMax - (J - J1) * (page.yMax - page.yMin) / (J2 - J1);
 
         private void FormMain_Resize(object sender, EventArgs e)
         {
@@ -135,12 +149,6 @@ namespace VectorEditor
             J2 = ClientSize.Height;
             Draw();
         }
-
-        private int II(double x) => I1 + (int)((x - page.xMin) * (I2 - I1) / (page.xMax - page.xMin));
-        private int JJ(double y) => J1 + (int)((page.yMax - y) * (J2 - J1) / (page.yMax - page.yMin));
-        private double XX(int I) => page.xMin + (I - I1) * (page.xMax - page.xMin) / (I2 - I1);
-        private double YY(int J) => page.yMax - (J - J1) * (page.yMax - page.yMin) / (J2 - J1);
-
         private void Draw()
         {
             using (Graphics g = Graphics.FromImage(bitmap))
@@ -211,6 +219,7 @@ namespace VectorEditor
 
         private void FormMain_Paint(object sender, PaintEventArgs e) => Draw();
 
+        #region Функции мыши
         private void FormMain_MouseDown(object sender, MouseEventArgs e)
         {
             e0 = e;
@@ -475,24 +484,9 @@ namespace VectorEditor
             Draw();
         }
 
-        private void FormMain_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Control && e.KeyCode == Keys.Z)
-            {
-                Undo();
-                e.Handled = true;
-                return;
-            }
+        #endregion
 
-            if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
-            {
-                page.RemoveAt(Lib.numObj);
-                SaveState();
-                Lib.numObj = -1;
-                Draw();
-            }
-        }
-
+        #region Выбор инструмента
         public void SetTool(byte tool)
         {
             flTools = tool;
@@ -505,15 +499,6 @@ namespace VectorEditor
             UpdateCursor(); // Обновляем курсор при смене инструмента
         }
 
-        public void SaveProject(string fileName) => page.Save(fileName);
-        public void LoadProject(string fileName)
-        {
-            page.Load(fileName);
-            undoStack.Clear();
-            SaveState(); 
-            Draw();
-        }
-
         // Обработчики для кнопок (вызываются из дизайнера)
         private void ToolButtonClick(object sender, EventArgs e)
         {
@@ -524,6 +509,18 @@ namespace VectorEditor
             }
         }
 
+        #endregion
+
+        #region Сохранение и загрузка файла
+        public void SaveProject(string fileName) => page.Save(fileName);
+        public void LoadProject(string fileName)
+        {
+            page.Load(fileName);
+            undoStack.Clear();
+            SaveState();
+            Draw();
+        }
+
         private void btnSave_Click(object sender, EventArgs e)
         {
             SaveFileDialog sfd = new SaveFileDialog();
@@ -531,7 +528,6 @@ namespace VectorEditor
             if (sfd.ShowDialog() == DialogResult.OK)
                 SaveProject(sfd.FileName);
         }
-
         private void btnLoad_Click(object sender, EventArgs e)
         {
             OpenFileDialog ofd = new OpenFileDialog();
@@ -540,10 +536,307 @@ namespace VectorEditor
                 LoadProject(ofd.FileName);
         }
 
+        #endregion
+
+        #region ЭКСПОРТ
+        private void btnExport_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.Filter = "JPEG Image|*.jpg|DXF |*.dxf";
+            sfd.Title = "Экспорт изображения";
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                string ext = Path.GetExtension(sfd.FileName).ToLower();
+                try
+                {
+                    switch (ext)
+                    {
+                        case ".jpg": ExportJPEG(sfd.FileName); break;
+                        case ".dxf": ExportDXF(sfd.FileName); break;
+                        default: MessageBox.Show("Unsupported format."); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Ошбика Экспорта: {ex.Message}");
+                }
+            }
+        }
+
+        #region Экспорт в .jpeg
+        private void ExportJPEG(string fileName)
+        {
+            bitmap.Save(fileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+        }
+        #endregion
+        #region Экспорт в .dxf
+        private void ExportDXF(string fileName)
+        {
+            using (StreamWriter sw = new StreamWriter(fileName))
+            {
+                // Заголовок
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("HEADER");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+
+                // Таблица слоёв
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("TABLES");
+                sw.WriteLine("0");
+                sw.WriteLine("TABLE");
+                sw.WriteLine("2");
+                sw.WriteLine("LAYER");
+                sw.WriteLine("70");
+                sw.WriteLine("1");
+                sw.WriteLine("0");
+                sw.WriteLine("LAYER");
+                sw.WriteLine("2");
+                sw.WriteLine("0");
+                sw.WriteLine("70");
+                sw.WriteLine("0");
+                sw.WriteLine("62");
+                sw.WriteLine("7"); // белый
+                sw.WriteLine("6");
+                sw.WriteLine("CONTINUOUS");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDTAB");
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+
+                // Секция ENTITIES
+                sw.WriteLine("0");
+                sw.WriteLine("SECTION");
+                sw.WriteLine("2");
+                sw.WriteLine("ENTITIES");
+
+                // Обходим объекты
+                for (int i = 0; i < page.Count; i++)
+                {
+                    Obj obj = page[i];
+                    if (obj is ObjRect rect)
+                    {
+                        double x1 = rect.points[0].x;
+                        double y1 = rect.points[0].y;
+                        double x2 = rect.points[1].x;
+                        double y2 = rect.points[1].y;
+                        WriteLine(sw, x1, y1, x2, y1, obj);
+                        WriteLine(sw, x2, y1, x2, y2, obj);
+                        WriteLine(sw, x2, y2, x1, y2, obj);
+                        WriteLine(sw, x1, y2, x1, y1, obj);
+                    }
+                    else if (obj is ObjEllipse ell)
+                    {
+                        double cx = (ell.points[0].x + ell.points[1].x) / 2;
+                        double cy = (ell.points[0].y + ell.points[1].y) / 2;
+                        double rx = Math.Abs(ell.points[1].x - ell.points[0].x) / 2;
+                        double ry = Math.Abs(ell.points[1].y - ell.points[0].y) / 2;
+                        var pts = GetEllipsePoints(cx, cy, rx, ry, 30);
+                        WritePolyline(sw, pts, obj);
+                    }
+                    else if (obj is ObjBezier bez)
+                    {
+                        List<PointF> pts = new List<PointF>();
+                        var segments = GetBezierSegments(bez);
+                        foreach (var seg in segments)
+                        {
+                            // Аппроксимируем каждый сегмент 15 отрезками
+                            for (int t = 0; t <= 15; t++)
+                            {
+                                double u = t / 15.0;
+                                double x = (1 - u) * (1 - u) * (1 - u) * seg[0].X +
+                                           3 * (1 - u) * (1 - u) * u * seg[1].X +
+                                           3 * (1 - u) * u * u * seg[2].X +
+                                           u * u * u * seg[3].X;
+                                double y = (1 - u) * (1 - u) * (1 - u) * seg[0].Y +
+                                           3 * (1 - u) * (1 - u) * u * seg[1].Y +
+                                           3 * (1 - u) * u * u * seg[2].Y +
+                                           u * u * u * seg[3].Y;
+                                pts.Add(new PointF((float)x, (float)y));
+                            }
+                        }
+                        if (bez.IsClosed && pts.Count > 0)
+                            pts.Add(pts[0]);
+                        if (pts.Count > 1)
+                            WritePolyline(sw, pts, obj);
+                    }
+                    else if (obj is ObjText txt)
+                    {
+                        sw.WriteLine("0");
+                        sw.WriteLine("TEXT");
+                        sw.WriteLine("8");
+                        sw.WriteLine("0");
+                        sw.WriteLine("10");
+                        sw.WriteLine(txt.points[0].x.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("20");
+                        sw.WriteLine(txt.points[0].y.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("30");
+                        sw.WriteLine("0");
+                        sw.WriteLine("40");
+                        sw.WriteLine(txt.Font.Size.ToString(CultureInfo.InvariantCulture));
+                        sw.WriteLine("1");
+                        sw.WriteLine(txt.Text);
+                        sw.WriteLine("50");
+                        sw.WriteLine("0");
+                        sw.WriteLine("62");
+                        sw.WriteLine(ColorToDXF(txt.pColor));
+                    }
+                }
+
+                sw.WriteLine("0");
+                sw.WriteLine("ENDSEC");
+                sw.WriteLine("0");
+                sw.WriteLine("EOF");
+            }
+        }
+
+        // Вспомогательные методы для DXF
+        private void WriteLine(StreamWriter sw, double x1, double y1, double x2, double y2, Obj obj)
+        {
+            sw.WriteLine("0");
+            sw.WriteLine("LINE");
+            sw.WriteLine("8");
+            sw.WriteLine("0");
+            sw.WriteLine("10");
+            sw.WriteLine(x1.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("20");
+            sw.WriteLine(y1.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("30");
+            sw.WriteLine("0");
+            sw.WriteLine("11");
+            sw.WriteLine(x2.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("21");
+            sw.WriteLine(y2.ToString(CultureInfo.InvariantCulture));
+            sw.WriteLine("31");
+            sw.WriteLine("0");
+            sw.WriteLine("62");
+            sw.WriteLine(ColorToDXF(obj.pColor));
+        }
+
+        private void WritePolyline(StreamWriter sw, List<PointF> pts, Obj obj)
+        {
+            if (pts.Count < 2) return;
+            sw.WriteLine("0");
+            sw.WriteLine("POLYLINE");
+            sw.WriteLine("8");
+            sw.WriteLine("0");
+            sw.WriteLine("66");
+            sw.WriteLine("1");
+            sw.WriteLine("62");
+            sw.WriteLine(ColorToDXF(obj.pColor));
+            foreach (var p in pts)
+            {
+                sw.WriteLine("0");
+                sw.WriteLine("VERTEX");
+                sw.WriteLine("8");
+                sw.WriteLine("0");
+                sw.WriteLine("10");
+                sw.WriteLine(p.X.ToString(CultureInfo.InvariantCulture));
+                sw.WriteLine("20");
+                sw.WriteLine(p.Y.ToString(CultureInfo.InvariantCulture));
+                sw.WriteLine("30");
+                sw.WriteLine("0");
+            }
+            sw.WriteLine("0");
+            sw.WriteLine("SEQEND");
+        }
+
+        private List<PointF> GetEllipsePoints(double cx, double cy, double rx, double ry, int segments)
+        {
+            List<PointF> pts = new List<PointF>();
+            for (int i = 0; i <= segments; i++)
+            {
+                double angle = 2 * Math.PI * i / segments;
+                double x = cx + rx * Math.Cos(angle);
+                double y = cy + ry * Math.Sin(angle);
+                pts.Add(new PointF((float)x, (float)y));
+            }
+            return pts;
+        }
+
+        private List<PointF[]> GetBezierSegments(ObjBezier bez)
+        {
+            List<PointF[]> segs = new List<PointF[]>();
+            if (bez.points.Length < 4) return segs;
+            int i = 1;
+            while (i + 2 < bez.points.Length)
+            {
+                PointF[] seg = new PointF[4];
+                seg[0] = new PointF((float)bez.points[i - 1].x, (float)bez.points[i - 1].y);
+                seg[1] = new PointF((float)bez.points[i].x, (float)bez.points[i].y);
+                seg[2] = new PointF((float)bez.points[i + 1].x, (float)bez.points[i + 1].y);
+                seg[3] = new PointF((float)bez.points[i + 2].x, (float)bez.points[i + 2].y);
+                segs.Add(seg);
+                i += 3;
+            }
+            return segs;
+        }
+
+        private int ColorToDXF(Color c)
+        {
+            if (c == Color.Black) return 0;
+            if (c == Color.Red) return 1;
+            if (c == Color.Yellow) return 2;
+            if (c == Color.Green) return 3;
+            if (c == Color.Cyan) return 4;
+            if (c == Color.Blue) return 5;
+            if (c == Color.Magenta) return 6;
+            if (c == Color.White) return 7;
+            return 7; // по умолчанию белый
+        }
+
+        #endregion
+
+        #endregion
+
+        #region Изменение темы приложения
+        private void ApplyTheme(bool dark)
+        {
+            if (dark)
+            {
+                // Тёмная тема
+                this.BackColor = Color.FromArgb(45, 45, 48);
+                this.ForeColor = Color.White;                 
+                toolStrip1.BackColor = Color.FromArgb(45, 45, 48);
+                toolStrip1.ForeColor = Color.White;
+
+            }
+            else
+            {
+                // Светлая тема (по умолч)
+                this.BackColor = SystemColors.Control;
+                this.ForeColor = SystemColors.ControlText;
+                toolStrip1.BackColor = SystemColors.Control;
+                toolStrip1.ForeColor = SystemColors.ControlText;
+            }
+
+            // Принудительно перерисовываем форму
+            this.Invalidate();
+        }
+
+        private void btnLightTheme_Click(object sender, EventArgs e)
+        {
+            ApplyTheme(false);
+        }
+
+        private void btnDarkTheme_Click(object sender, EventArgs e)
+        {
+            ApplyTheme(true);
+        }
+
+        #endregion
+
+        #region Возможность Ctrl + Z
+
         private Stack<byte[]> undoStack = new Stack<byte[]>();
         private const int MaxUndo = 30;
         private bool isUndoing = false;
 
+         
         private void SaveState()
         {
             if (isUndoing) return;
@@ -584,6 +877,29 @@ namespace VectorEditor
                 isUndoing = false;
             }
         }
+
+
+        private void FormMain_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.Z)
+            {
+                Undo();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.Delete && Lib.numObj >= 0 && Lib.numObj < page.Count)
+            {
+                page.RemoveAt(Lib.numObj);
+                SaveState();
+                Lib.numObj = -1;
+                Draw();
+            }
+        }
+
+        #endregion
+
+        #region Различные типы курсоров
         private void UpdateCursor()
         {
             switch (flTools)
@@ -617,6 +933,7 @@ namespace VectorEditor
         {
             UpdateCursor();
         }
+        
 
         // ========== ДОБАВЛЕННЫЙ ОБРАБОТЧИК ==========
         private void FormMain_MouseLeave(object sender, EventArgs e)
@@ -624,5 +941,6 @@ namespace VectorEditor
             // Когда мышь покидает форму, возвращаем стандартный курсор
             this.Cursor = Cursors.Default;
         }
+        #endregion
     }
 }

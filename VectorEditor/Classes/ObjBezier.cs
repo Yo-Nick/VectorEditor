@@ -10,6 +10,7 @@ namespace VectorEditor.Classes
     // Кривая Безье
     public class ObjBezier : Obj
     {
+        public bool IsClosed => closed;
         private bool closed = false;
 
         public ObjBezier(Color color, byte width)
