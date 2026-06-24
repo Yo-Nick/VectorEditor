@@ -47,12 +47,14 @@ namespace VectorEditor
 
         private void Form1_Load(object sender, EventArgs e)
         {
-
+            this.WindowState = FormWindowState.Maximized;
         }
 
         public Form1()
         {
             InitializeComponent();
+            // Включаем двойную буферизацию для формы
+            this.DoubleBuffered = true;
             // Создаём буфер
             this.ClientSize = new Size(800, 600);
             bitmap = new Bitmap(ClientSize.Width, ClientSize.Height);
@@ -172,7 +174,6 @@ namespace VectorEditor
             using (Graphics g = Graphics.FromImage(bitmap))
             {
                 g.Clear(Color.White);
-                // Рисуем белую область страницы (границы видимого окна)
                 g.FillRectangle(Brushes.White, II(page.xMin), JJ(page.yMax),
                                  II(page.xMax) - II(page.xMin),
                                  JJ(page.yMin) - JJ(page.yMax));
@@ -192,7 +193,7 @@ namespace VectorEditor
                     }
                 }
             }
-            gScreen.DrawImage(bitmap, ClientRectangle);//выывод
+            Invalidate();
         }
 
         //Метод для  рисования прямоугольника выделения (шейпа)
@@ -216,8 +217,10 @@ namespace VectorEditor
             }
         }
 
-        private void FormMain_Paint(object sender, PaintEventArgs e) => Draw();
-
+        private void FormMain_Paint(object sender, PaintEventArgs e)
+        {
+            e.Graphics.DrawImage(bitmap, ClientRectangle);
+        }
         #region Функции мыши
         private void FormMain_MouseDown(object sender, MouseEventArgs e)
         {
